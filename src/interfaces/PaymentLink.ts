@@ -10,6 +10,7 @@ export interface PaymentLinkOptions {
   approved_redirection_url?: string;
   failed_redirection_url?: string;
   process_redirection_url?: string;
+  [key: string]: unknown;
 }
 
 export interface PaymentLinkCreateParams extends PaymentLinkOptions {

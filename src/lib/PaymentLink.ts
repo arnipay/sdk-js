@@ -1,7 +1,7 @@
 import {
-    PaymentLinkCreateParams,
-    PaymentLinkOptions,
-    PaymentLinkResponse
+  PaymentLinkCreateParams,
+  PaymentLinkOptions,
+  PaymentLinkResponse
 } from '../interfaces';
 import { Client } from './Client';
 
@@ -14,20 +14,20 @@ export class PaymentLink {
 
   /**
    * Create a new payment link
-   * 
-   * @param price The price of the item
-   * @param title Title of the payment link
-   * @param options Additional options
-   * @returns The created payment link data
    */
-  public async create(price: number, title: string, description?: string, options: PaymentLinkOptions = {}): Promise<PaymentLinkResponse> {
+  public async create(
+    price: number,
+    title: string,
+    description?: string | null,
+    options: PaymentLinkOptions = {}
+  ): Promise<PaymentLinkResponse> {
     const data: PaymentLinkCreateParams = {
       price,
       title,
       ...options
     };
 
-    if (description) {
+    if (description != null) {
       data.description = description;
     }
 
@@ -36,9 +36,6 @@ export class PaymentLink {
 
   /**
    * Get a specific payment link by ID
-   * 
-   * @param id Payment link ID
-   * @returns Payment link data
    */
   public async get(id: string): Promise<PaymentLinkResponse> {
     return this.client.request<PaymentLinkResponse>('GET', `/payment/${id}`);
@@ -46,10 +43,24 @@ export class PaymentLink {
 
   /**
    * Get a list of all payment links
-   * 
-   * @returns List of payment links
    */
   public async list(): Promise<PaymentLinkResponse[]> {
     return this.client.request<PaymentLinkResponse[]>('GET', '/payment');
+  }
+
+  /**
+   * Reverse a payment associated with a payment link
+   */
+  public async reverse(id: string, reason?: string | null): Promise<Record<string, unknown>> {
+    const data: Record<string, string> = {};
+    if (reason != null) {
+      data.reason = reason;
+    }
+
+    return this.client.request<Record<string, unknown>>(
+      'POST',
+      `/payment/${id}/reverse`,
+      Object.keys(data).length > 0 ? data : undefined
+    );
   }
 }

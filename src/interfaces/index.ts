@@ -1,5 +1,7 @@
 export * from './PaymentLink';
 export * from './Webhook';
+export * from './Transaction';
+export * from './PaymentMethod';
 
 export interface ApiErrorResponse {
   status: 'error';

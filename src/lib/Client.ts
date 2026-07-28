@@ -1,36 +1,68 @@
 import axios, { AxiosHeaders, AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
-import crypto from 'crypto';
 import { ApiErrorResponse, ApiSuccessResponse } from '../interfaces';
 import { GatewayError } from './GatewayError';
+import { SignatureService } from './SignatureService';
+
+export const PRODUCTION_BASE_URL = 'https://arnipay.com.py/api/v1';
+export const SANDBOX_BASE_URL = 'https://sandbox.arnipay.com.py/api/v1';
 
 export class Client {
   private readonly clientId: string;
   private readonly privateKey: string;
-  private readonly baseUrl: string;
-  private readonly axiosInstance: AxiosInstance;
+  private baseUrl: string;
+  private verifySsl: boolean = true;
+  private axiosInstance: AxiosInstance;
+  private readonly signatureService: SignatureService;
 
-  constructor(clientId: string, privateKey: string, baseUrl: string = 'https://yourdomain.com/api/v1') {
+  constructor(
+    clientId: string,
+    privateKey: string,
+    baseUrl: string = PRODUCTION_BASE_URL
+  ) {
     this.clientId = clientId;
     this.privateKey = privateKey;
     this.baseUrl = baseUrl;
-    this.axiosInstance = axios.create({
-      baseURL: this.baseUrl
-    });
+    this.signatureService = new SignatureService();
+    this.axiosInstance = this.createAxiosInstance();
   }
 
-  public async request<T>(method: string, endpoint: string, data?: any): Promise<T> {
+  /**
+   * Override the API base URL.
+   * When verifySsl is true, the URL must start with https://.
+   */
+  public setBaseUrl(baseUrl: string, verifySsl: boolean = true): this {
+    if (verifySsl && !baseUrl.startsWith('https://')) {
+      throw new Error('Base URL must use HTTPS when SSL verification is enabled.');
+    }
+
+    this.baseUrl = baseUrl;
+    this.verifySsl = verifySsl;
+    this.axiosInstance = this.createAxiosInstance();
+    return this;
+  }
+
+  public getBaseUrl(): string {
+    return this.baseUrl;
+  }
+
+  public async request<T>(method: string, endpoint: string, data?: unknown): Promise<T> {
     const methodUpper = method.toUpperCase();
     const { requestUrl, canonicalUri } = this.resolveRequestTarget(endpoint);
-    const timestamp = Math.floor(Date.now() / 1000).toString();
+    const timestamp = Math.floor(Date.now() / 1000);
     const body = this.prepareRequestBody(methodUpper, data);
-    const bodyHash = this.hashBody(body);
-    const canonical = this.buildCanonicalString(methodUpper, canonicalUri, timestamp, this.clientId, bodyHash);
-    const signature = this.computeSignature(canonical);
+    const signature = this.signatureService.generate(
+      methodUpper,
+      canonicalUri,
+      timestamp,
+      this.clientId,
+      this.privateKey,
+      body
+    );
 
     const headers = AxiosHeaders.from({
       'Content-Type': 'application/json',
       'X-Client-ID': this.clientId,
-      'X-Timestamp': timestamp,
+      'X-Timestamp': String(timestamp),
       'X-Signature': signature
     });
 
@@ -38,7 +70,9 @@ export class Client {
       method: methodUpper,
       url: requestUrl,
       headers,
-      data: body.length > 0 ? body : undefined
+      data: body.length > 0 ? body : undefined,
+      // Node http adapter uses this for TLS; ignored for http://
+      ...(this.verifySsl === false ? { httpsAgent: this.getInsecureHttpsAgent() } : {})
     };
 
     try {
@@ -46,20 +80,36 @@ export class Client {
       return response.data.data;
     } catch (error: any) {
       if (error.response) {
-        const { data, status } = error.response;
-        const errorResponse = data as ApiErrorResponse;
+        const { data: responseData, status } = error.response;
+        const errorResponse = responseData as ApiErrorResponse;
 
         throw new GatewayError(
-          errorResponse.message || 'An error occurred during the request',
+          errorResponse?.message || 'An error occurred during the request',
           status,
-          errorResponse.errors
+          errorResponse?.errors
         );
       }
 
-      throw new GatewayError(
-        error.message || 'An unexpected error occurred',
-        error.status || 0
-      );
+      throw new GatewayError(error.message || 'An unexpected error occurred', error.status || 0);
+    }
+  }
+
+  private createAxiosInstance(): AxiosInstance {
+    return axios.create({
+      baseURL: this.baseUrl,
+      transformRequest: [(data) => data],
+      ...(this.verifySsl === false ? { httpsAgent: this.getInsecureHttpsAgent() } : {})
+    });
+  }
+
+  private getInsecureHttpsAgent(): any {
+    // Lazy require so browsers/bundlers without node:https still work for http APIs
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const https = require('https');
+      return new https.Agent({ rejectUnauthorized: false });
+    } catch {
+      return undefined;
     }
   }
 
@@ -99,8 +149,8 @@ export class Client {
     return endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
   }
 
-  private prepareRequestBody(method: string, data?: any): string {
-    if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) {
+  private prepareRequestBody(method: string, data?: unknown): string {
+    if (!['POST', 'PUT', 'PATCH'].includes(method)) {
       return '';
     }
 
@@ -116,23 +166,15 @@ export class Client {
       return data.toString('utf8');
     }
 
+    if (typeof data === 'object' && Object.keys(data as object).length === 0) {
+      return '';
+    }
+
     return this.stringifyJson(data);
   }
 
-  private stringifyJson(payload: any): string {
+  private stringifyJson(payload: unknown): string {
     const json = JSON.stringify(payload);
     return json ? json.replace(/\\\//g, '/') : '';
-  }
-
-  private buildCanonicalString(method: string, uri: string, timestamp: string, clientId: string, bodyHash: string): string {
-    return [method.toUpperCase(), uri, timestamp, clientId, bodyHash].join('\n');
-  }
-
-  private hashBody(body: string): string {
-    return crypto.createHash('sha256').update(body, 'utf8').digest('base64');
-  }
-
-  private computeSignature(canonical: string): string {
-    return crypto.createHmac('sha256', this.privateKey).update(canonical, 'utf8').digest('hex');
   }
 }

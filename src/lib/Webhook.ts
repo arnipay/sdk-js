@@ -1,28 +1,38 @@
 import crypto from 'crypto';
-import { WebhookEvent } from '../interfaces';
+import { WebhookEventPayload } from '../interfaces';
+import { GatewayError } from './GatewayError';
+import { SignatureService } from './SignatureService';
+import { WebhookEvent } from './WebhookEvent';
 
 export type WebhookHeaders = Record<string, string | string[] | undefined>;
 
 export interface ValidateSignatureOptions {
   path: string;
   method?: string;
+  /** Reject timestamps older than this many seconds. Default 900 (15 min). Set 0 to disable. */
   toleranceSeconds?: number;
+}
+
+/** Minimal IncomingMessage / Express-like request shape */
+export interface WebhookRequest {
+  method?: string;
+  originalUrl?: string;
+  url?: string;
+  headers: WebhookHeaders;
+  body?: string | Buffer | unknown;
 }
 
 export class Webhook {
   private readonly webhookSecret: string;
+  private readonly signatureService: SignatureService;
 
   constructor(webhookSecret: string) {
     this.webhookSecret = webhookSecret;
+    this.signatureService = new SignatureService();
   }
 
   /**
    * Validate the webhook signature
-   * 
-   * @param payload Raw request payload
-   * @param headers Headers containing X-Client-ID, X-Timestamp, X-Signature, and X-Webhook-ID (when provided)
-   * @param options Validation options including the request path (and optional method/tolerance)
-   * @returns Whether the signature is valid
    */
   public validateSignature(
     payload: string,
@@ -47,65 +57,96 @@ export class Webhook {
       return false;
     }
 
-    const now = Math.floor(Date.now() / 1000);
-
-    if (now - timestamp > toleranceSeconds) {
-      return false;
+    if (toleranceSeconds > 0) {
+      const now = Math.floor(Date.now() / 1000);
+      if (now - timestamp > toleranceSeconds) {
+        return false;
+      }
     }
 
-    const bodyHash = this.hashBody(payload);
-
-    const canonical = this.buildCanonicalString(
+    const expectedSignature = this.signatureService.generate(
       method,
       path,
-      timestampHeader,
+      timestamp,
       clientId,
-      bodyHash
+      this.webhookSecret,
+      payload
     );
 
-    const expectedSignature = crypto
-      .createHmac('sha256', this.webhookSecret)
-      .update(canonical, 'utf8')
-      .digest('hex');
-
-    const expectedBuffer = Buffer.from(expectedSignature);
-    const signatureBuffer = Buffer.from(signature);
-
-    if (expectedBuffer.length !== signatureBuffer.length) {
-      return false;
-    }
-
-    return crypto.timingSafeEqual(expectedBuffer, signatureBuffer);
+    return this.timingSafeEqual(expectedSignature, signature);
   }
 
   /**
-   * Process webhook event
-   * 
-   * @param payload Raw request payload
-   * @param headers Headers containing X-Client-ID, X-Timestamp, X-Signature, and optional X-Webhook-ID
-   * @param options Validation options including the request path (and optional method/tolerance)
-   * @returns Processed event data or null if invalid
+   * Validate and parse a webhook. Throws GatewayError on failure.
+   * Returns a WebhookEvent helper (use .toObject() for the raw payload).
    */
-  public processEvent(payload: string, headers: WebhookHeaders, options: ValidateSignatureOptions): WebhookEvent | null {
+  public processEvent(
+    payload: string,
+    headers: WebhookHeaders,
+    options: ValidateSignatureOptions
+  ): WebhookEvent {
     if (!this.validateSignature(payload, headers, options)) {
-      return null;
+      throw new GatewayError('Invalid webhook signature', 401);
     }
+
+    let event: WebhookEventPayload;
 
     try {
-      const event = JSON.parse(payload) as WebhookEvent;
-
-      if (!event || !event.event || !event.data) {
-        return null;
-      }
-
-      return event;
-    } catch (error) {
-      return null;
+      event = JSON.parse(payload) as WebhookEventPayload;
+    } catch {
+      throw new GatewayError('Invalid JSON payload', 400);
     }
+
+    if (!event || !event.event || !event.data) {
+      throw new GatewayError('Invalid webhook payload', 422);
+    }
+
+    return new WebhookEvent(event);
   }
 
-  private hashBody(payload: string): string {
-    return crypto.createHash('sha256').update(payload, 'utf8').digest('base64');
+  /**
+   * Process an Express / Node IncomingMessage-style request.
+   * Body must be the raw string/Buffer used for signature verification.
+   */
+  public processRequest(req: WebhookRequest, options?: Partial<ValidateSignatureOptions>): WebhookEvent {
+    const path = options?.path ?? req.originalUrl ?? req.url ?? '/';
+    const method = options?.method ?? req.method ?? 'POST';
+    const payload = this.normalizeBody(req.body);
+
+    return this.processEvent(payload, req.headers, {
+      path,
+      method,
+      toleranceSeconds: options?.toleranceSeconds
+    });
+  }
+
+  /**
+   * Process a request and invoke a callback with the event.
+   */
+  public async handle(
+    req: WebhookRequest,
+    callback: (event: WebhookEvent) => unknown | Promise<unknown>,
+    options?: Partial<ValidateSignatureOptions>
+  ): Promise<unknown> {
+    const event = this.processRequest(req, options);
+    return callback(event);
+  }
+
+  private normalizeBody(body: WebhookRequest['body']): string {
+    if (body === undefined || body === null) {
+      return '';
+    }
+
+    if (typeof body === 'string') {
+      return body;
+    }
+
+    if (Buffer.isBuffer(body)) {
+      return body.toString('utf8');
+    }
+
+    // If middleware already parsed JSON, re-stringify for hashing (prefer raw body)
+    return JSON.stringify(body).replace(/\\\//g, '/');
   }
 
   private getHeader(headers: WebhookHeaders, name: string): string | undefined {
@@ -124,19 +165,14 @@ export class Webhook {
     return undefined;
   }
 
-  private buildCanonicalString(
-    method: string,
-    path: string,
-    timestamp: string,
-    clientId: string,
-    bodyHash: string
-  ): string {
-    return [method.toUpperCase(), path, timestamp, clientId, bodyHash].join('\n');
-  }
-
   private normalizePath(path: string): string {
     if (!path) {
       return '/';
+    }
+
+    // Strip scheme/host if a full URL was passed
+    if (/^[a-z][a-z\d+\-.]*:\/\//i.test(path)) {
+      return this.signatureService.extractUri(path);
     }
 
     if (!path.startsWith('/')) {
@@ -144,5 +180,16 @@ export class Webhook {
     }
 
     return path;
+  }
+
+  private timingSafeEqual(expected: string, actual: string): boolean {
+    const expectedBuffer = Buffer.from(expected);
+    const actualBuffer = Buffer.from(actual);
+
+    if (expectedBuffer.length !== actualBuffer.length) {
+      return false;
+    }
+
+    return crypto.timingSafeEqual(expectedBuffer, actualBuffer);
   }
 }

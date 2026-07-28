@@ -1,287 +1,129 @@
-# Payment Gateway JavaScript/TypeScript SDK
+# Arnipay JavaScript/TypeScript SDK
 
-This SDK provides a simple and easy-to-use interface for integrating with our payment processing system using JavaScript or TypeScript.
-
-You can find the full API documentation [here](https://docs.yourdomain.com/api).
+Simple SDK for [Arnipay](https://arnipay.com.py) — create payment links, manage transactions, and verify webhooks.
 
 ## Installation
 
 ```bash
 npm install gw-sdk
-# or
-yarn add gw-sdk
 ```
 
-## Usage
-
-### Initialization
+## Quick Start
 
 ```typescript
-import { Client, PaymentLink, Webhook } from 'gw-sdk';
+import { Arnipay, GatewayError } from 'gw-sdk';
 
-// Initialize the client
-const client = new Client(
-  'your-client-id',
-  'your-private-key',
-  'https://yourdomain.com/api/v1'
-);
-```
+// Third argument `true` enables sandbox
+const arni = new Arnipay('CLIENT_ID', 'PRIVATE_KEY', true);
 
-### Creating a Payment Link
-
-```typescript
-const paymentLink = new PaymentLink(client);
+// Local / custom API:
+// arni.getClient().setBaseUrl('http://arnipay.local/api/v1', false);
 
 try {
-  const link = await paymentLink.create(
-    150000, // price
-    'Premium Subscription', // title
-    '1 year access to all premium content', // description
-    {
-      payment_methods: ['qr', 'tigo'],
-      reference: `SUB-${new Date().getFullYear()}`,
-      approved_redirection_url: 'https://example.com/success',
-      failed_redirection_url: 'https://example.com/failed'
-    }
-  );
-  
-  console.log(`Payment link created with ID: ${link.id}`);
-  console.log(`Payment URL: ${link.url}`);
+  const url = await arni.payment()
+    .title('Pizza Order')
+    .amount(50000)
+    .reference('ORDER-123')
+    .description('Two large pizzas')
+    .redirect('https://site.com/thanks', 'https://site.com/oops')
+    .allow(['qr', 'card'])
+    .createUrl();
+
+  console.log('Pay here:', url);
+
+  const methods = await arni.getPaymentMethods();
+  // [{ code: 'qr', name: 'Código QR' }, ...]
 } catch (error) {
   if (error instanceof GatewayError) {
-    console.error(`Error: ${error.message}`);
-    if (error.errors) {
-      console.error('Validation errors:', error.errors);
-    }
-  } else {
-    console.error(`Unexpected error: ${error}`);
+    console.error(error.message, error.statusCode, error.errors);
   }
 }
 ```
 
-### Getting a Specific Payment Link
-
-```typescript
-const paymentLink = new PaymentLink(client);
-
-try {
-  const link = await paymentLink.get('payment-link-uuid');
-  
-  console.log('Payment link details:');
-  console.log(`Title: ${link.title}`);
-  console.log(`Price: ${link.price}`);
-  console.log(`Is Paid: ${link.is_paid ? 'Yes' : 'No'}`);
-} catch (error) {
-  console.error(`Error: ${error.message}`);
-}
-```
-
-### Listing All Payment Links
-
-```typescript
-const paymentLink = new PaymentLink(client);
-
-try {
-  const links = await paymentLink.list();
-  
-  console.log('Payment links:');
-  links.forEach(link => {
-    console.log(`- ${link.title} (${link.id}): ${link.price}`);
-    console.log(`  Created: ${link.created_at}`);
-    console.log(`  Status: ${link.is_paid ? 'Paid' : 'Not paid'}`);
-  });
-} catch (error) {
-  console.error(`Error: ${error.message}`);
-}
-```
-
-### Handling Webhooks
+### Webhooks (Express)
 
 ```typescript
 import express from 'express';
-import { Webhook, WebhookEvent } from 'gw-sdk';
+import { Arnipay, GatewayError } from 'gw-sdk';
 
+const arni = new Arnipay('CLIENT_ID', 'PRIVATE_KEY');
 const app = express();
-const webhook = new Webhook('your-webhook-secret');
 
-// Use express.raw to get the raw request body for signature verification
-app.post('/webhook', express.raw({ type: 'application/json' }), (req, res) => {
-  const headers = req.headers;
-  const rawBody = req.body.toString('utf8');
-  const event = webhook.processEvent(rawBody, headers, {
-    path: req.originalUrl,
-    method: req.method
-  });
-  
-  if (!event) {
-    return res.status(403).json({ error: 'Invalid webhook' });
-  }
-  
-  // Process based on event type
-  switch (event.event) {
-    case 'payment.completed':
-      // Handle successful payment
-      const { link_id, payment_id, amount } = event.data;
-      console.log(`Payment ${payment_id} for link ${link_id} completed: ${amount}`);
-      
-      // Update your database or take appropriate action
-      break;
-      
-    case 'payment.failed':
-      // Handle failed payment
-      console.log(`Payment for link ${event.data.link_id} failed`);
-      break;
-      
-    case 'payment.pending':
-      // Handle pending payment
-      console.log(`Payment for link ${event.data.link_id} is pending`);
-      break;
-  }
-  
-  // Send a success response
-  return res.status(200).json({ status: 'success' });
-});
-
-app.listen(3000, () => {
-  console.log('Webhook handler listening on port 3000');
-});
-```
-
-## Request Signing
-
-All signed requests (client-initiated calls and incoming webhooks) share the same canonical representation:
-
-1. HTTP method in upper case (e.g. `GET`, `POST`)
-2. URI path + query string (no scheme/host)
-3. Unix timestamp (seconds) matching `X-Timestamp`
-4. Stable identifier from the `X-Client-ID` header
-5. Base64-encoded SHA-256 hash of the raw request body (use the hash of an empty string for requests without body)
-
-The signature is produced with `HMAC-SHA256` using your private key:
-
-```typescript
-const canonical = [
-  method.toUpperCase(),
-  "${path}${query}",
-  timestamp,
-  clientId,
-  base64Sha256(body)
-].join("\n");
-
-const signature = crypto
-  .createHmac('sha256', privateKey)
-  .update(canonical, 'utf8')
-  .digest('hex');
-```
-
-Include the following headers in every signed request:
-
-- `X-Client-ID`: your stable identifier
-- `X-Timestamp`: Unix timestamp in seconds (requests expire after 15 minutes)
-- `X-Signature`: hex-encoded HMAC generated from the canonical string
-
-### Client usage example
-
-```typescript
-const timestamp = Math.floor(Date.now() / 1000).toString();
-const pathAndQuery = '/payment';
-const rawBody = JSON.stringify(payload);
-const bodyHash = crypto.createHash('sha256').update(rawBody, 'utf8').digest('base64');
-const canonical = ['POST', pathAndQuery, timestamp, clientId, bodyHash].join('\n');
-
-const signature = crypto
-  .createHmac('sha256', privateKey)
-  .update(canonical, 'utf8')
-  .digest('hex');
-
-await axios.post(`${baseUrl}${pathAndQuery}`, payload, {
-  headers: {
-    'X-Client-ID': clientId,
-    'X-Timestamp': timestamp,
-    'X-Signature': signature,
-    'Content-Type': 'application/json'
+app.post('/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
+  try {
+    await arni.webhook('WEBHOOK_SECRET').handle(req, (event) => {
+      if (event.isPaid()) {
+        // event.get('reference') — same reference you set on create
+        console.log('Paid:', event.get('payment_id'), event.get('amount'));
+      }
+    });
+    res.sendStatus(200);
+  } catch (error) {
+    res.sendStatus(error instanceof GatewayError ? error.statusCode || 400 : 400);
   }
 });
 ```
 
-### Webhook validation example
+### Transactions
 
 ```typescript
-const headers = req.headers;
-const rawBody = req.body.toString('utf8');
-
-const canonical = [
-  req.method.toUpperCase(),
-  req.originalUrl,
-  headers['x-timestamp'],
-  headers['x-client-id'],
-  crypto.createHash('sha256').update(rawBody, 'utf8').digest('base64')
-].join('\n');
-
-const expectedSignature = crypto
-  .createHmac('sha256', webhookSecret)
-  .update(canonical, 'utf8')
-  .digest('hex');
-
-if (!crypto.timingSafeEqual(Buffer.from(expectedSignature), Buffer.from(headers['x-signature'] as string))) {
-  return res.status(403).json({ error: 'Invalid webhook' });
-}
+const txs = await arni.transaction().list({ link_payment_id: linkId });
+const tx = await arni.transaction().get('transaction-uuid');
+await arni.transaction().reverse('transaction-uuid', 'Customer requested refund');
 ```
 
-Remember to reject requests when `X-Timestamp` is older than 15 minutes, or when any required header is missing. Webhooks also include `X-Webhook-ID`, which you must echo in the canonical URI.
+### Payment links (service API)
 
-## Error Handling
+```typescript
+import { Client, PaymentLink } from 'gw-sdk';
 
-The SDK throws `GatewayError` when an API error occurs. This error provides:
+const client = new Client('CLIENT_ID', 'PRIVATE_KEY');
+const paymentLink = new PaymentLink(client);
 
-- Error message
-- HTTP status code
-- Validation errors (if available)
+const link = await paymentLink.create(150000, 'Premium Subscription', 'desc', {
+  payment_methods: ['qr', 'tigo'],
+  reference: 'SUB-2026'
+});
+
+await paymentLink.get(link.id);
+await paymentLink.list();
+await paymentLink.reverse(link.id, 'Out of stock');
+```
+
+## Request signing
+
+All API calls and webhooks use the same HMAC-SHA256 canonical format:
+
+1. HTTP method (upper case)
+2. URI path + query (no scheme/host)
+3. Unix timestamp (`X-Timestamp`)
+4. Client ID (`X-Client-ID`)
+5. Base64(SHA-256(raw body))
+
+Headers: `X-Client-ID`, `X-Timestamp`, `X-Signature`
+
+## Error handling
 
 ```typescript
 import { GatewayError } from 'gw-sdk';
 
 try {
-  // SDK operation
+  await arni.payment().title('x').amount(1).create();
 } catch (error) {
   if (error instanceof GatewayError) {
-    console.error(`API Error: ${error.message}`);
-    console.error(`Status Code: ${error.statusCode}`);
-    
-    if (error.errors) {
-      console.error('Validation Errors:');
-      console.error(error.errors);
-    }
-  } else {
-    console.error(`Unexpected error: ${error}`);
+    console.error(error.message, error.statusCode, error.errors);
   }
 }
 ```
 
-## Running Tests
+## Running tests
 
-To run the test suite, you'll need to set up your environment variables first.
+```bash
+cp .env.example tests/.env
+# fill CLIENT_ID, PRIVATE_KEY, API_BASE_URL, WEBHOOK_SECRET
 
-1. Copy the example environment file:
-   ```bash
-   cp .env.example .env
-   ```
+npm test
+```
 
-2. Edit the `.env` file and provide your credentials:
-   ```
-   CLIENT_ID=your-client-id
-   PRIVATE_KEY=your-private-key
-   API_BASE_URL=https://yourdomain.com/api/v1
-   WEBHOOK_SECRET=your-webhook-secret
-   ```
-
-3. Run the tests:
-   ```bash
-   npm test
-   # or
-   yarn test
-   ```
-
-## TypeScript Support
-
-This SDK is built with TypeScript and includes type definitions for all functions and objects.
+- Unit tests always run
+- Integration tests hit `API_BASE_URL` (e.g. `http://arnipay.local/api/v1`) and skip if credentials are missing
