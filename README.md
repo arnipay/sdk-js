@@ -33,7 +33,6 @@ try {
     .reference('ORDER-123')
     .description('Two large pizzas')
     .redirect('https://site.com/thanks', 'https://site.com/oops')
-    .allow(['qr', 'card'])
     .createUrl();
 
   console.log('Pay here:', url);
@@ -46,6 +45,8 @@ try {
   }
 }
 ```
+
+Omit payment methods so the link offers whatever is enabled for your commerce (including newly added ones). You can use `.allow(['qr', 'card'])` when you need to restrict methods for a specific link.
 
 ### Webhooks (Express)
 
@@ -90,8 +91,8 @@ const client = new Client('CLIENT_ID', 'PRIVATE_KEY');
 const paymentLink = new PaymentLink(client);
 
 const link = await paymentLink.create(150000, 'Premium Subscription', 'desc', {
-  payment_methods: ['qr', 'tigo'],
   reference: 'SUB-2026'
+  // Optional: payment_methods: ['qr', 'tigo'] to restrict methods for this link
 });
 
 await paymentLink.get(link.id);
