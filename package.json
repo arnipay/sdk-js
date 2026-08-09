@@ -6,11 +6,11 @@
   "types": "dist/index.d.ts",
   "repository": {
     "type": "git",
-    "url": "https://github.com/GEEKWALLETSRL/arnipay-sdk-js.git"
+    "url": "https://github.com/arnipay/sdk-js.git"
   },
   "homepage": "https://arnipay.com.py",
   "bugs": {
-    "url": "https://github.com/GEEKWALLETSRL/arnipay-sdk-js/issues"
+    "url": "https://github.com/arnipay/sdk-js/issues"
   },
   "scripts": {
     "build": "tsc",

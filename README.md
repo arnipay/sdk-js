@@ -1,12 +1,19 @@
 # Arnipay JavaScript/TypeScript SDK
 
-Simple SDK for [Arnipay](https://arnipay.com.py) — create payment links, manage transactions, and verify webhooks.
+JavaScript/TypeScript library with full TypeScript support for Node.js (and browser use where applicable). Create payment links, manage transactions, and verify webhooks.
+
+**Full API documentation:** [arnipay/gateway-documentation](https://github.com/arnipay/gateway-documentation) ([Español](https://github.com/arnipay/gateway-documentation/blob/main/es/README.md))
+
+- [Payment Links API](https://github.com/arnipay/gateway-documentation/blob/main/payment-links.md)
+- [Code examples](https://github.com/arnipay/gateway-documentation/blob/main/payment-links-examples.md)
 
 ## Installation
 
 ```bash
 npm install gw-sdk
 ```
+
+Repository: [github.com/arnipay/sdk-js](https://github.com/arnipay/sdk-js)
 
 ## Quick Start
 
@@ -64,6 +71,8 @@ app.post('/webhook', express.raw({ type: 'application/json' }), async (req, res)
 });
 ```
 
+For webhook configuration, payloads, and retries, see [Webhook notifications](https://github.com/arnipay/gateway-documentation/blob/main/payment-links.md#webhook-notifications) in the API docs.
+
 ### Transactions
 
 ```typescript
@@ -90,17 +99,62 @@ await paymentLink.list();
 await paymentLink.reverse(link.id, 'Out of stock');
 ```
 
-## Request signing
+## Authentication
 
-All API calls and webhooks use the same HMAC-SHA256 canonical format:
+All API endpoints use signature-based authentication with your Commerce credentials:
 
-1. HTTP method (upper case)
-2. URI path + query (no scheme/host)
-3. Unix timestamp (`X-Timestamp`)
-4. Client ID (`X-Client-ID`)
-5. Base64(SHA-256(raw body))
+- `X-Client-ID`: Your Commerce client ID (UUID)
+- `X-Timestamp`: Current Unix timestamp in seconds (UTC)
+- `X-Signature`: HMAC-SHA256 signature using your private key
 
-Headers: `X-Client-ID`, `X-Timestamp`, `X-Signature`
+Requests expire **15 minutes** after `X-Timestamp`.
+
+The same canonical string is used for API requests and webhooks.
+
+**Canonical components:**
+
+1. Uppercased HTTP method (e.g. `GET`, `POST`)
+2. Request URI (path + query only; no scheme/host)
+3. Unix timestamp (same as `X-Timestamp`)
+4. Stable identifier (same as `X-Client-ID`)
+5. Base64-encoded SHA-256 of the raw body: `base64(sha256(raw_body))`. For requests without a body use `base64(sha256(""))`
+
+Join the components with newlines (`"\n"`) and compute the signature:
+
+```
+canonical = join("\n", [METHOD, URI, TIMESTAMP, CLIENT_ID, base64(sha256(RAW_BODY))])
+signature = HMAC-SHA256(canonical, PRIVATE_KEY)
+```
+
+Send JSON bodies as the exact raw bytes you sign (no extra escaping). The SDK signs the serialized request body it sends.
+
+You can find your client ID and private key in your Commerce settings, or regenerate them if needed.
+
+## API base URL
+
+```
+https://arnipay.com.py/api/v1/
+```
+
+## Webhooks
+
+The gateway can send real-time notifications when payment events occur. Configure your webhook URL in Commerce settings.
+
+Webhook requests use the same canonical string and headers as API requests, plus `X-Webhook-ID`.
+
+- Real-time notifications (completed, failed, pending)
+- HMAC-SHA256 verification using the canonical string
+- Configurable retries
+- Detailed event payloads
+
+See [Webhook configuration](https://github.com/arnipay/gateway-documentation/blob/main/payment-links.md#webhook-notifications) and [webhook examples](https://github.com/arnipay/gateway-documentation/blob/main/payment-links-examples.md#webhook-examples) in the API documentation.
+
+## Rate limiting
+
+- 60 requests per minute per client
+- 1000 requests per day per client
+
+Exceeding limits returns `429 Too Many Requests`.
 
 ## Error handling
 
@@ -115,6 +169,14 @@ try {
   }
 }
 ```
+
+## Other SDKs
+
+- **PHP:** [github.com/arnipay/sdk-php](https://github.com/arnipay/sdk-php)
+
+## Support
+
+If you have any questions or need assistance integrating with our API, see [gateway-documentation](https://github.com/arnipay/gateway-documentation) or contact our support team at [info@arnipay.com.py](mailto:info@arnipay.com.py).
 
 ## Running tests
 
