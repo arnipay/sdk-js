@@ -23,9 +23,6 @@ import { Arnipay, GatewayError } from 'gw-sdk';
 // Third argument `true` uses https://sandbox.arnipay.com.py/api/v1
 const arni = new Arnipay('CLIENT_ID', 'PRIVATE_KEY', true);
 
-// Local / custom API:
-// arni.getClient().setBaseUrl('http://arnipay.local/api/v1', false);
-
 try {
   const url = await arni.payment()
     .title('Pizza Order')

@@ -9,13 +9,13 @@ describe('Client', () => {
 
   it('rejects non-HTTPS when verifySsl is true', () => {
     const client = new Client('id', 'key');
-    expect(() => client.setBaseUrl('http://arnipay.local/api/v1', true)).toThrow(/HTTPS/);
+    expect(() => client.setBaseUrl('http://example.com/api/v1', true)).toThrow(/HTTPS/);
   });
 
   it('allows http when verifySsl is false', () => {
     const client = new Client('id', 'key');
-    client.setBaseUrl('http://arnipay.local/api/v1', false);
-    expect(client.getBaseUrl()).toBe('http://arnipay.local/api/v1');
+    client.setBaseUrl('http://example.com/api/v1', false);
+    expect(client.getBaseUrl()).toBe('http://example.com/api/v1');
   });
 });
 

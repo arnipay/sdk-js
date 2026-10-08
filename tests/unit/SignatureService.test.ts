@@ -25,7 +25,7 @@ describe('SignatureService', () => {
   });
 
   it('extracts path and query from absolute and relative URLs', () => {
-    expect(service.extractUri('https://arnipay.local/api/v1/payment?page=1')).toBe(
+    expect(service.extractUri('https://example.com/api/v1/payment?page=1')).toBe(
       '/api/v1/payment?page=1'
     );
     expect(service.extractUri('/webhooks/hook?x=1')).toBe('/webhooks/hook?x=1');
