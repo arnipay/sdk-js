@@ -34,6 +34,16 @@ export interface PaymentLinkResponse {
   expiration_date?: string | null;
   created_at: string;
   updated_at?: string;
+  /**
+   * True only while a payment on the link is still `paid`.
+   * A refund sets this back to false; use `status` to tell that apart from a link that was never paid.
+   */
   is_paid: boolean;
+  /**
+   * Latest payment status, or null when the link has no payment.
+   * Present on GET and list. Omitted on create.
+   * Refund values are `refunded`, `auto_refunded`, and `pending_refund`.
+   */
+  status?: string | null;
   source?: string;
 }

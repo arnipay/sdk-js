@@ -90,6 +90,24 @@ describe('Webhook', () => {
       expect(event.getType()).toBe('payment.completed');
     });
 
+    it('does not treat a refund as a collected payment', () => {
+      const refunded = new WebhookEvent({
+        event: 'payment.refunded',
+        timestamp: '2023-01-01T00:00:00Z',
+        data: { status: 'refunded', amount: 150000 }
+      });
+      const pending = new WebhookEvent({
+        event: 'payment.refund_pending',
+        timestamp: '2023-01-01T00:00:00Z',
+        data: { status: 'pending_refund', amount: 150000 }
+      });
+
+      expect(refunded.isPaid()).toBe(false);
+      expect(refunded.get('status')).toBe('refunded');
+      expect(pending.isPaid()).toBe(false);
+      expect(pending.getType()).toBe('payment.refund_pending');
+    });
+
     it('throws GatewayError for invalid signature', () => {
       const payload = JSON.stringify({
         event: 'payment.completed',

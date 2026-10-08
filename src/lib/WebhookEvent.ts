@@ -26,7 +26,10 @@ export class WebhookEvent {
     return this.payload.data;
   }
 
-  /** True when event is payment.completed */
+  /**
+   * True only for `payment.completed`.
+   * A refund is `payment.refunded` or `payment.refund_pending`, not a collected payment.
+   */
   public isPaid(): boolean {
     return this.getType() === 'payment.completed';
   }

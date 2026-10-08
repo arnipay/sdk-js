@@ -20,7 +20,7 @@ Repository: [github.com/arnipay/sdk-js](https://github.com/arnipay/sdk-js)
 ```typescript
 import { Arnipay, GatewayError } from 'gw-sdk';
 
-// Third argument `true` enables sandbox
+// Third argument `true` uses https://sandbox.arnipay.com.py/api/v1
 const arni = new Arnipay('CLIENT_ID', 'PRIVATE_KEY', true);
 
 // Local / custom API:
@@ -61,8 +61,13 @@ app.post('/webhook', express.raw({ type: 'application/json' }), async (req, res)
   try {
     await arni.webhook('WEBHOOK_SECRET').handle(req, (event) => {
       if (event.isPaid()) {
+        // payment.completed only. A refund is payment.refunded or payment.refund_pending.
         // event.get('reference') — same reference you set on create
         console.log('Paid:', event.get('payment_id'), event.get('amount'));
+      }
+
+      if (event.getType() === 'payment.refunded') {
+        // event.get('status') is "refunded" or "auto_refunded"
       }
     });
     res.sendStatus(200);
@@ -133,9 +138,12 @@ You can find your client ID and private key in your Commerce settings, or regene
 
 ## API base URL
 
-```
-https://arnipay.com.py/api/v1/
-```
+| Environment | Base URL |
+|-------------|----------|
+| Production | `https://arnipay.com.py/api/v1/` |
+| Sandbox | `https://sandbox.arnipay.com.py/api/v1/` |
+
+Pass `true` as the third `Arnipay` argument to use the sandbox. Paths are the same in both environments.
 
 ## Webhooks
 
@@ -189,4 +197,4 @@ npm test
 ```
 
 - Unit tests always run
-- Integration tests hit `API_BASE_URL` (e.g. `http://arnipay.local/api/v1`) and skip if credentials are missing
+- Integration tests hit `API_BASE_URL` (e.g. `https://sandbox.arnipay.com.py/api/v1`) and skip if credentials are missing

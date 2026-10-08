@@ -14,10 +14,15 @@ export interface WebhookEventData {
 
 export type WebhookEventType =
   | 'payment.completed'
-  | 'payment.failed'
   | 'payment.pending'
-  | 'pending_refund'
-  | 'auto_refunded'
+  | 'payment.failed'
+  | 'payment.cancelled'
+  | 'payment.refund_pending'
+  | 'payment.refunded'
+  | 'payment.expired'
+  | 'payment.voided'
+  | 'payment.void_pending'
+  | 'payment.chargeback_pending'
   | string;
 
 export interface WebhookEventPayload {

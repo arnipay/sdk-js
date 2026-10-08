@@ -26,12 +26,6 @@ export class Arnipay {
       privateKey,
       isSandbox ? SANDBOX_BASE_URL : PRODUCTION_BASE_URL
     );
-
-    if (isSandbox) {
-      // Sandbox may use a cert chain that needs looser verify in some environments;
-      // HTTPS is still required. Match PHP which passes verifySsl=false for sandbox.
-      this.client.setBaseUrl(SANDBOX_BASE_URL, false);
-    }
   }
 
   /** Fluent payment-link builder */
