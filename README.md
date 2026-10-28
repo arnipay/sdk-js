@@ -80,8 +80,8 @@ For webhook configuration, payloads, and retries, see [Webhook notifications](ht
 
 ```typescript
 const txs = await arni.transaction().list({ link_payment_id: linkId });
-const tx = await arni.transaction().get('transaction-uuid');
-await arni.transaction().reverse('transaction-uuid', 'Customer requested refund');
+const tx = await arni.transaction().get(String(txs[0].id));
+await arni.transaction().reverse(String(txs[0].id), 'Customer requested refund');
 ```
 
 ### Payment links (service API)
@@ -99,6 +99,7 @@ const link = await paymentLink.create(150000, 'Premium Subscription', 'desc', {
 
 await paymentLink.get(link.id);
 await paymentLink.list();
+// Finds the paid transaction on this link and refunds it.
 await paymentLink.reverse(link.id, 'Out of stock');
 ```
 

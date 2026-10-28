@@ -4,6 +4,8 @@ import {
   PaymentLinkResponse
 } from '../interfaces';
 import { Client } from './Client';
+import { GatewayError } from './GatewayError';
+import { Transaction } from './Transaction';
 
 export class PaymentLink {
   private client: Client;
@@ -49,18 +51,20 @@ export class PaymentLink {
   }
 
   /**
-   * Reverse a payment associated with a payment link
+   * Reverse the paid transaction on a payment link.
+   * The gateway refunds a transaction id (`POST /transactions/{id}/reverse`), not the link id.
    */
   public async reverse(id: string, reason?: string | null): Promise<Record<string, unknown>> {
-    const data: Record<string, string> = {};
-    if (reason != null) {
-      data.reason = reason;
+    const transactions = new Transaction(this.client);
+    const list = await transactions.list({ link_payment_id: id });
+    const paid = list
+      .filter((item) => item.status === 'paid' && item.id != null)
+      .sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')))[0];
+
+    if (!paid) {
+      throw new GatewayError('Payment cannot be reversed. It must be in PAID status.', 400);
     }
 
-    return this.client.request<Record<string, unknown>>(
-      'POST',
-      `/payment/${id}/reverse`,
-      Object.keys(data).length > 0 ? data : undefined
-    );
+    return transactions.reverse(String(paid.id), reason);
   }
 }
