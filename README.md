@@ -10,7 +10,7 @@ JavaScript/TypeScript library with full TypeScript support for Node.js (and brow
 ## Installation
 
 ```bash
-npm install gw-sdk
+npm install @arnipay/sdk
 ```
 
 Repository: [github.com/arnipay/sdk-js](https://github.com/arnipay/sdk-js)
@@ -18,7 +18,7 @@ Repository: [github.com/arnipay/sdk-js](https://github.com/arnipay/sdk-js)
 ## Quick Start
 
 ```typescript
-import { Arnipay, GatewayError } from 'gw-sdk';
+import { Arnipay, GatewayError } from '@arnipay/sdk';
 
 // Third argument `true` uses https://sandbox.arnipay.com.py/api/v1
 const arni = new Arnipay('CLIENT_ID', 'PRIVATE_KEY', true);
@@ -49,7 +49,7 @@ Omit payment methods so the link offers whatever is enabled for your commerce (i
 
 ```typescript
 import express from 'express';
-import { Arnipay, GatewayError } from 'gw-sdk';
+import { Arnipay, GatewayError } from '@arnipay/sdk';
 
 const arni = new Arnipay('CLIENT_ID', 'PRIVATE_KEY');
 const app = express();
@@ -87,7 +87,7 @@ await arni.transaction().reverse(String(txs[0].id), 'Customer requested refund')
 ### Payment links (service API)
 
 ```typescript
-import { Client, PaymentLink } from 'gw-sdk';
+import { Client, PaymentLink } from '@arnipay/sdk';
 
 const client = new Client('CLIENT_ID', 'PRIVATE_KEY');
 const paymentLink = new PaymentLink(client);
@@ -166,7 +166,7 @@ Exceeding limits returns `429 Too Many Requests`.
 ## Error handling
 
 ```typescript
-import { GatewayError } from 'gw-sdk';
+import { GatewayError } from '@arnipay/sdk';
 
 try {
   await arni.payment().title('x').amount(1).create();

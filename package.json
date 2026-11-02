@@ -1,5 +1,5 @@
 {
-  "name": "gw-sdk",
+  "name": "@arnipay/sdk",
   "version": "1.0.0",
   "description": "JavaScript SDK for integrating with the Arnipay payment processing system",
   "main": "dist/index.js",
@@ -43,5 +43,8 @@
   "files": [
     "dist",
     "README.md"
-  ]
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
 }
